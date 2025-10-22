@@ -1,148 +1,111 @@
 package result
 
-import (
-	"github.com/morikuni/failure"
-)
+// Result[T] = OkT[T] + ErrorT[T]
+type Result[T any] interface {
+	Unwrap() T
+	UnwrapUnchecked() T
+	UnwrapErr() error
+	UnwrapErrUnchecked() error
+	UnwrapOr(value T) T
+	UnwrapOrDefault() T
+	UnwrapOrElse(op func(err error) T) T
+	Expect(msg string) T
+	ExpectFatal(msg string, fatal func(v ...any)) T
+	ExpectErr(msg string) error
+	ExpectErrFatal(msg string, fatal func(v ...any)) error
+	Inspect(f func(value T)) Result[T]
+	InspectErr(f func(err error)) Result[T]
+	Err() Option[error]
+	Ok() Option[T]
+	Or(value Result[T]) Result[T]
+	OrElse(op func(err error) Result[T]) Result[T]
+	Cloned() Result[T]
+	IsOk() bool
+	IsOkAnd(f func(value T) bool) bool
+	IsErr() bool
+	IsErrAnd(f func(err error) bool) bool
+	MapErr(op func(err error) error) Result[T]
+}
 
-type Result[T any] struct {
+type OkT[T any] struct {
 	value T
-	err   error
 }
 
-func (r Result[T]) Unwrap() T {
-	if r.IsErr() {
-		panic(r.err)
-	}
-	return r.value
-}
+func Default[T any]() (res T) { return }
 
-func (r Result[T]) UnwrapErr() error {
-	if r.IsOk() {
-		panic("called `called `Result.UnwrapErr()` on an `Ok` value")
-	}
-	return r.err
+func (ok OkT[T]) Unwrap() T                                      { return ok.value }
+func (ok OkT[T]) UnwrapUnchecked() T                             { return ok.value }
+func (ok OkT[T]) UnwrapErr() error                               { panic("called `called `Result.UnwrapErr()` on an `Ok` value") }
+func (ok OkT[T]) UnwrapErrUnchecked() error                      { return nil }
+func (ok OkT[T]) UnwrapOr(value T) T                             { return ok.value }
+func (ok OkT[T]) UnwrapOrDefault() T                             { return ok.value }
+func (ok OkT[T]) UnwrapOrElse(op func(err error) T) T            { return ok.value }
+func (ok OkT[T]) Expect(msg string) T                            { return ok.value }
+func (ok OkT[T]) ExpectFatal(msg string, fatal func(v ...any)) T { return ok.value }
+func (ok OkT[T]) ExpectErr(msg string) error                     { return nil }
+func (ok OkT[T]) ExpectErrFatal(msg string, fatal func(v ...any)) error {
+	fatal(msg)
+	return nil
 }
+func (ok OkT[T]) Inspect(f func(value T)) Result[T] {
+	f(ok.value)
+	return ok
+}
+func (ok OkT[T]) InspectErr(f func(err error)) Result[T]        { return ok }
+func (ok OkT[T]) Err() Option[error]                            { return None[error]() }
+func (ok OkT[T]) Ok() Option[T]                                 { return Some(ok.value) }
+func (ok OkT[T]) Or(value Result[T]) Result[T]                  { return ok }
+func (ok OkT[T]) OrElse(op func(err error) Result[T]) Result[T] { return ok }
+func (ok OkT[T]) Cloned() Result[T]                             { return ok }
+func (ok OkT[T]) IsOk() bool                                    { return true }
+func (ok OkT[T]) IsOkAnd(f func(value T) bool) bool             { return f(ok.value) }
+func (ok OkT[T]) IsErr() bool                                   { return false }
+func (ok OkT[T]) IsErrAnd(f func(err error) bool) bool          { return false }
+func (ok OkT[T]) MapErr(op func(err error) error) Result[T]     { return ok }
 
-func (r Result[T]) UnwrapErrUnchecked() error {
-	return r.err
+func (e ErrorT[T]) Unwrap() (res T)                     { panic(e.err) }
+func (e ErrorT[T]) UnwrapUnchecked() (res T)            { return }
+func (e ErrorT[T]) UnwrapErr() error                    { return e.err }
+func (e ErrorT[T]) UnwrapErrUnchecked() error           { return e.err }
+func (e ErrorT[T]) UnwrapOr(value T) T                  { return value }
+func (e ErrorT[T]) UnwrapOrDefault() (res T)            { return }
+func (e ErrorT[T]) UnwrapOrElse(op func(err error) T) T { return op(e.err) }
+func (e ErrorT[T]) Expect(msg string) T                 { panic(msg) }
+func (e ErrorT[T]) ExpectFatal(msg string, fatal func(v ...any)) (res T) {
+	fatal(msg)
+	return
 }
+func (e ErrorT[T]) ExpectErr(msg string) error                            { return e.err }
+func (e ErrorT[T]) ExpectErrFatal(msg string, fatal func(v ...any)) error { return e.err }
+func (e ErrorT[T]) Inspect(f func(value T)) Result[T]                     { return e }
+func (e ErrorT[T]) InspectErr(f func(err error)) Result[T] {
+	f(e.err)
+	return e
+}
+func (e ErrorT[T]) Err() Option[error]                            { return Some(e.err) }
+func (e ErrorT[T]) Ok() Option[T]                                 { return None[T]() }
+func (e ErrorT[T]) Or(value Result[T]) Result[T]                  { return value }
+func (e ErrorT[T]) OrElse(op func(err error) Result[T]) Result[T] { return op(e.err) }
+func (e ErrorT[T]) Cloned() Result[T]                             { return e }
+func (e ErrorT[T]) IsOk() bool                                    { return false }
+func (e ErrorT[T]) IsOkAnd(f func(value T) bool) bool             { return false }
+func (e ErrorT[T]) IsErr() bool                                   { return true }
+func (e ErrorT[T]) IsErrAnd(f func(err error) bool) bool          { return f(e.err) }
+func (e ErrorT[T]) MapErr(op func(err error) error) Result[T]     { return Err[T](op(e.err)) }
 
-func (r Result[T]) UnwrapOr(value T) T {
-	if r.IsOk() {
-		return r.value
-	}
-	return value
-}
-
-func (r Result[T]) UnwrapOrDefault() T {
-	// not check ok
-	return r.value
-}
-
-func (r Result[T]) UnwrapOrElse(op func(err error) T) T {
-	if r.IsOk() {
-		return r.value
-	}
-	return op(r.err)
-}
-
-func (r Result[T]) UnwrapUnchecked() T {
-	return r.value
-}
-
-func (r Result[T]) Expect(msg string) T {
-	if r.IsOk() {
-		return r.value
-	}
-	panic(msg)
-}
-
-func (r Result[T]) ExpectErr(msg string) error {
-	if r.IsErr() {
-		return r.err
-	}
-	panic(msg)
-}
-
-func (r Result[T]) Inspect(f func(value T)) Result[T] {
-	if r.IsOk() {
-		f(r.value)
-	}
-	return r
-}
-
-func (r Result[T]) InspectErr(f func(err error)) Result[T] {
-	if r.IsErr() {
-		f(r.err)
-	}
-	return r
-}
-
-func (r Result[T]) Err() Option[error] {
-	if r.IsOk() {
-		return None[error]()
-	}
-	return Some[error](r.err)
-}
-func (r Result[T]) Ok() Option[T] {
-	if r.IsOk() {
-		return Some[T](r.value)
-	}
-	return None[T]()
-}
-
-func (r Result[T]) Or(value Result[T]) Result[T] {
-	if r.IsOk() {
-		return Ok(r.value)
-	}
-	return value
-}
-func (r Result[T]) OrElse(op func(err error) Result[T]) Result[T] {
-	if r.IsOk() {
-		return Ok(r.value)
-	}
-	return op(r.err)
-}
-func (r Result[T]) Cloned() Result[T] {
-	return Result[T]{value: r.value, err: r.err}
-}
-
-func (r Result[T]) IsOk() bool {
-	return r.err == nil
-}
-func (r Result[T]) IsOkAnd(f func(value T) bool) bool {
-	if r.IsErr() {
-		return false
-	}
-	return f(r.value)
-}
-func (r Result[T]) IsErr() bool {
-	return r.err != nil
-}
-
-func (r Result[T]) IsErrAnd(f func(err error) bool) bool {
-	if r.IsOk() {
-		return false
-	}
-	return f(r.err)
-}
-func (r Result[T]) MapErr(op func(err error) error) Result[T] {
-	if r.IsOk() {
-		return Ok(r.value)
-	}
-	return Err[T](op(r.err))
+type ErrorT[T any] struct {
+	err error
 }
 
 func Ok[T any](value T) Result[T] {
-	return Result[T]{
+	return OkT[T]{
 		value: value,
-		err:   nil,
 	}
 }
 
 func Err[T any](err error) Result[T] {
-	return Result[T]{
-		err: failure.Wrap(err),
+	return ErrorT[T]{
+		err: err,
 	}
 }
 
@@ -150,5 +113,5 @@ func AsResult[T any](value T, err error) Result[T] {
 	if err != nil {
 		return Err[T](err)
 	}
-	return Ok[T](value)
+	return Ok(value)
 }
